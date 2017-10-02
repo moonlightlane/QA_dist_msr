@@ -1,49 +1,102 @@
 import torch
-import torch.nn as nn
+from torch.autograd import Variable
+import random
 
-# the decoder class
-class distDecoder(nn.Module):
-    def __init__(self, input_size, output_size):
-        super(distDecoder, self).__init__()
-        self.input_size = input_size
-        self.output_size = output_size
-        self.out = nn.Linear(self.input_size, self.output_size)
-    def calculateLoss(self, inputVec, ans1stWord, embeddings_index):
-        # can modify the below loss to be other distance metric
-        # here, using euclidean distance
-        # NOTE here the inputVec is the processed vector of encoder outputted hidden state
-        #      inputVec dim = (1, hidden_size)
-        # TODO verify value for dim
-        loss = torch.norm(embeddings_index[ans1stWord] - self.out(inputVec), p=2, dim=1, out=True)^2
-        return loss
-    def generateWord(self, inputVec, wordsInInput, embeddings_index):
-        # NOTE hidden layer output size from encoder  = (num_layers * num_directions, batch, hidden_size), alternating between layers
-        #      see https://discuss.pytorch.org/t/how-can-i-know-which-part-of-h-n-of-bidirectional-rnn-is-for-backward-process/3883
-        # inputVec dim = (1, hidden_size)
-        decoded_word = None
-        min_dist_old = 1e15 # an arbitrary large number
-        for word in wordsInInput:
-            min_dist_new = self.calculateLoss(inputVec, word, embeddings_index)
-            if min_dist_new < min_dist_old:
-                min_dist_old = min_dist_new
-                decoded_word = word
-        return word
+def readLinesFromFile(path):
+    with open(path) as f:
+        content = f.readlines()
+    content = [x.rstrip('\n') for x in content]
+    f.close()
+    return content
 
-
-class QA(nn.Module):
-    def __init__(self, encoder, decoder):
-        super(QA, self).__init__()
-        self.encoder = encoder
-        self.decoder = decoder
-    def forward(self, Input):
-        enc_output = self.encoder(Input)
-
-
-# dd = distDecoder(a, b);
-# qa = QA(nn.LSTM(input_size, hidden_size, dropout, bidirectional),
-#         dd.input_size, dd.output_size))
 
 # function to prepare input
-def prepareInput(qc_file, a_file):
+# returns a list of torch autograd variables, each variable is a tensor of the appropriate sized input to nn.rnn
+def prepareInput(src_file, tgt_file, embeddings_index, embeddings_size):
+
+    src = readLinesFromFile(src_file)
+    tgt = readLinesFromFile(tgt_file)
+    src_data = []
+    tgt_data = []
+    data_tokens = []
+
+    for i in range(len(src)):
+
+        src_w = src[i].split(" ") # list of words
+        src_s = torch.FloatTensor(len(src_w), 1, embeddings_size) # empty tensor placeholder
+        for w in range(len(src_w)):
+            src_s[w] = Variable(embeddings_index[src_w[w]].cuda())  # move data to GPU and wrap it in Variable
+        src_data.append(src_s)
+
+        tgt_w = tgt[i].split(" ") # list of words
+        tgt_s = torch.FloatTensor(len(tgt_w), 1, embeddings_size)
+        for w in range(len(tgt_w)):
+            tgt_s[w] = Variable(embeddings_index[tgt_w[w]].cuda())
+        tgt_data.append(tgt_s)
+
+        data_tokens += src_w + tgt_w
+        data_tokens = list(set(data_tokens))
+
+    return src, tgt, src_data, tgt_data, data_tokens
+
+
+def prepareBatchInput(qc_file, a_file):
     return None
 
+
+# read the glove pretrained embeddings
+def readGlove(path_to_data):
+    embeddings_index = {}
+    f = open(path_to_data)
+    for line in f:
+        values = line.split()
+        word = values[0]
+        coefs = np.asarray(values[1:], dtype='float32')
+        coefs = torch.from_numpy(coefs)
+        embeddings_index[word] = coefs
+    f.close()
+
+    print('Found %s word vectors.' % len(embeddings_index))
+
+    # get dimension from a random sample in the dict
+    embeddings_size = random.sample( embeddings_index.items(), 1 )[0][1].size(-1)
+    print('dimension of word embeddings: ' + str(embeddings_size))
+
+    # a few definitions of special tokens
+    SOS_token = -torch.ones(embeddings_size) # start of sentence token, all zerons
+    EOS_token = torch.ones(embeddings_size) # end of sentence token, all ones
+    UNK_token = torch.ones(embeddings_size) + torch.ones(embeddings_size) # these choices are pretty random
+    PAD_token = torch.zeros(embeddings_size)
+
+    # add special tokens to the embeddings
+    embeddings_index['SOS'] = SOS_token
+    embeddings_index['EOS'] = EOS_token
+    embeddings_index['UNK'] = UNK_token
+    embeddings_index['PAD'] = PAD_token
+
+    return embeddings_index, embeddings_size
+
+
+# generate word index and index word look up tables
+def generate_look_up_table(effective_tokens, effective_num_tokens, use_cuda = True):
+    word2index = {}
+    index2word = {}
+    for i in range(effective_num_tokens):
+        index2word[i] = effective_tokens[i]
+        word2index[effective_tokens[i]] = i
+    return word2index, index2word
+
+
+# count the number of tokens in both the word embeddings and the corpus
+def count_effective_num_tokens(data_tokens, embeddings_index, sos_eos = True):
+    ## find all unique tokens in the data (should be a subset of the number of embeddings)
+    data_tokens = list(set(data_tokens)) # find unique
+    if sos_eos:
+        data_tokens = ['SOS', 'EOS', 'UNK', 'PAD'] + data_tokens
+    else:
+        data_tokens = ['UNK', 'PAD']
+
+    effective_tokens = list(set(data_tokens).intersection(embeddings_index.keys()))
+    effective_num_tokens = len(effective_tokens)
+
+    return effective_tokens, effective_num_tokens
