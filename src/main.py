@@ -7,6 +7,9 @@ import random
 from src.QA_model import *
 from src.util import *
 
+# experiment result path
+result_path = '../../../results/QA_dist_model_1003/'
+
 # read embedding
 path_to_glove = '../../../data/glove.840B/glove.840B.300d.txt'
 embeddings_index, embeddings_size = readGlove(path_to_glove)
@@ -44,13 +47,16 @@ decoder = distDecoder(input_size=enc_hidden_size, output_size=embeddings_index)
 qa = QA(encoder=encoder, decoder=decoder).cuda()
 
 # set up optimnizer
-optimizer = optim.SGD(lr=0.001)
+lr = 1
+optimizer = optim.SGD(qa.parameters(), lr=lr)
 
 # start training
 record_loss_every = 100
 loss_vec = []
 for epoch in range(1,16):
 
+    # set to train mode
+    qa.train()
     print('training epoch at ' + str(epoch))
 
     for iter in range(len(cq)):
@@ -83,6 +89,7 @@ for epoch in range(1,16):
         optimizer.step()
 
     # perform evaluation (average loss) on the validation set every epoch
+    qa.eval() # set to evaluation mode
     validate_loss = 0.0
     for i in range(len(test_cq)):
         test_enc_out = qa.forward(test_cq_data[i])
@@ -94,7 +101,7 @@ for epoch in range(1,16):
     validate_loss = validate_loss / len(test_cq)
     print('average loss over validation set is: ' + str(validate_loss))
     # sample true answer first word and generated answer first word
-    sample_idx = random.sample(range(len(test)cq), 20)
+    sample_idx = random.sample(range(len(test_cq), 20))
     true_ans1stWord = [test_a[i].split(" ")[0] for i in sample_idx]
     gen_ans1stWord = [gen_ans1stWord[i] for i in sample_idx]
 
@@ -106,8 +113,5 @@ for epoch in range(1,16):
         'epoch': epoch,
         'optim': optimizer
     }
-    torch.save(checkpoint,
-               '%s_acc_%.2f_ppl_%.2f_e%d.pt'
-               % (opt.save_model, valid_stats.accuracy(),
-                  valid_stats.ppl(), epoch))
+    torch.save(checkpoint, result_path+'%s_loss_%.2f_e%d.pt' % ('QA_dist_model', validate_loss, epoch))
 
