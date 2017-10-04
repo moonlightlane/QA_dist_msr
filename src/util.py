@@ -1,6 +1,21 @@
 import torch
 from torch.autograd import Variable
 import random
+import numpy as np
+import time
+import math
+
+def asMinutes(s):
+    m = math.floor(s / 60)
+    s -= m * 60
+    return '%dm %ds' % (m, s)
+
+def timeSince(since, percent):
+    now = time.time()
+    s = now - since
+    es = s / (percent)
+    rs = es - s
+    return '%s (- %s)' % (asMinutes(s), asMinutes(rs))
 
 def readLinesFromFile(path):
     with open(path) as f:
@@ -22,22 +37,39 @@ def prepareInput(src_file, tgt_file, embeddings_index, embeddings_size):
 
     for i in range(len(src)):
 
-        src_w = src[i].split(" ") # list of words
-        src_s = torch.FloatTensor(len(src_w), 1, embeddings_size) # empty tensor placeholder
+        src_w = src[i].lower().split(" ") # list of words, make lower case
+        src_s = torch.FloatTensor(len(src_w), 1, embeddings_size).cuda() # empty tensor placeholder
         for w in range(len(src_w)):
-            src_s[w] = Variable(embeddings_index[src_w[w]].cuda())  # move data to GPU and wrap it in Variable
-        src_data.append(src_s)
+            try:
+                src_s[w] = embeddings_index[src_w[w]]  # move data to GPU and wrap it in Variable
+            except: # when the token is not found
+                src_s[w] = embeddings_index['UNK']
+        src_data.append(Variable(src_s))
 
-        tgt_w = tgt[i].split(" ") # list of words
-        tgt_s = torch.FloatTensor(len(tgt_w), 1, embeddings_size)
+        tgt_w = tgt[i].lower().split(" ") # list of words
+        tgt_s = torch.FloatTensor(len(tgt_w), 1, embeddings_size).cuda() # 1 in the middle because now batch size is 1
         for w in range(len(tgt_w)):
-            tgt_s[w] = Variable(embeddings_index[tgt_w[w]].cuda())
-        tgt_data.append(tgt_s)
+            try:
+                tgt_s[w] = embeddings_index[tgt_w[w]]
+            except:
+                tgt_s[w] = embeddings_index['UNK']
+        tgt_data.append(Variable(tgt_s))
 
         data_tokens += src_w + tgt_w
         data_tokens = list(set(data_tokens))
 
     return src, tgt, src_data, tgt_data, data_tokens
+# test
+# path_to_glove = '/home/jack/Documents/QA_QG/data/glove.6B/glove.6B.100d.txt'
+# embeddings_index, embeddings_size = readGlove(path_to_glove)
+# # read and prepare input data
+# cq_path = '/home/jack/Documents/QA_QG/data/squad_openNMT/train/cq_sent_concat_min.txt'
+# a_path = '/home/jack/Documents/QA_QG/data/squad_openNMT/train/as_min_NoAnnotate.txt'
+# cq, a, cq_data, a_data, tokens = prepareInput(src_file=cq_path, tgt_file=a_path, embeddings_index=embeddings_index,
+#                                               embeddings_size=embeddings_size)
+# print('read ' + str(len(cq)) + ' context+question, and ' + str(len(a)) + ' answers.')
+# print('type of element in cq: ' + str(type(cq_data[0])) + ' , and type inside it is: ' + str(type(cq_data[0].data)))
+# print('type of element in a:  ' + str(type(a_data[0]))  + ' , and type inside it is: ' + str(type(a_data[0].data)))
 
 
 def prepareBatchInput(qc_file, a_file):
@@ -53,7 +85,7 @@ def readGlove(path_to_data):
         word = values[0]
         coefs = np.asarray(values[1:], dtype='float32')
         coefs = torch.from_numpy(coefs)
-        embeddings_index[word] = coefs
+        embeddings_index[word] = coefs.cuda()
     f.close()
 
     print('Found %s word vectors.' % len(embeddings_index))
@@ -63,10 +95,10 @@ def readGlove(path_to_data):
     print('dimension of word embeddings: ' + str(embeddings_size))
 
     # a few definitions of special tokens
-    SOS_token = -torch.ones(embeddings_size) # start of sentence token, all zerons
-    EOS_token = torch.ones(embeddings_size) # end of sentence token, all ones
-    UNK_token = torch.ones(embeddings_size) + torch.ones(embeddings_size) # these choices are pretty random
-    PAD_token = torch.zeros(embeddings_size)
+    SOS_token = -torch.ones(embeddings_size).cuda() # start of sentence token, all zerons
+    EOS_token = torch.ones(embeddings_size).cuda() # end of sentence token, all ones
+    UNK_token = torch.ones(embeddings_size).cuda() + torch.ones(embeddings_size).cuda() # these choices are pretty random
+    PAD_token = torch.zeros(embeddings_size).cuda()
 
     # add special tokens to the embeddings
     embeddings_index['SOS'] = SOS_token
