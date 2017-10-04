@@ -11,6 +11,7 @@ from QA_model import *
 from util import *
 
 torch.cuda.set_device(1)
+print('torch device: ' + str(torch.cuda.current_device()))
 
 # for doing stuff in console
 # import os
