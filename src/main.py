@@ -10,6 +10,8 @@ import time
 from QA_model import *
 from util import *
 
+torch.cuda.set_device(1)
+
 # for doing stuff in console
 # import os
 # os.chdir('/home/jack/Documents/QA_QG/QA_dist_msr/src')
@@ -21,7 +23,7 @@ from util import *
 # from src.util import *
 
 # experiment result path
-result_path = '../../results/QA_dist_model_1003/'
+result_path = '../../results/QA_dist_model_1004/'
 
 # read embedding
 path_to_glove = '../../data/glove.6B/glove.6B.100d.txt'
