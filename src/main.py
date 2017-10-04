@@ -114,7 +114,7 @@ for epoch in range(1,num_epoch+1):
         # print at the last iteration in each epoch
         if iter == len(cq) - 1:
             print('training loss at last iteration of epoch ' + str(epoch) + ' is: ' + str(loss))
-            print('%s (%d %d%%) %.4f' % (timeSince(begin_time, epoch/float(num_epoch)), iter, epoch/num_epoch*100))
+            print('%s (%d %d%%) %.4f' % (timeSince(begin_time, epoch/float(num_epoch)), epoch, epoch/num_epoch*100, loss))
         # print progress once in a while
         if iter % 5000 == 0:
             print('   in iteration %d, all goes well.' % iter)
